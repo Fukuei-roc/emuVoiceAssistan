@@ -1,0 +1,189 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f7f8;
+  color: #172026;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f5f7f8;
+}
+
+.app-shell {
+  width: min(760px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px 24px;
+  gap: 14px;
+}
+
+header {
+  padding: 6px 2px 2px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.chat {
+  flex: 1;
+  min-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #d8dee4;
+  background: #ffffff;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  display: grid;
+  gap: 5px;
+}
+
+.speaker {
+  font-size: 14px;
+  font-weight: 700;
+  color: #5c6975;
+}
+
+.bubble {
+  width: fit-content;
+  max-width: 92%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.ai .bubble {
+  background: #eef3f2;
+  color: #14231f;
+}
+
+.user {
+  justify-items: end;
+}
+
+.user .speaker {
+  color: #45515c;
+}
+
+.user .bubble {
+  background: #1f6feb;
+  color: #ffffff;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+input,
+button {
+  min-height: 48px;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+input {
+  width: 100%;
+  border: 1px solid #c9d1d9;
+  padding: 0 12px;
+}
+
+button {
+  border: 0;
+  padding: 0 18px;
+  background: #116329;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.voice-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+#voiceButton.connected {
+  background: #9a3412;
+}
+
+#voiceStatus {
+  font-size: 15px;
+  color: #4b5563;
+}
+
+.debug {
+  border-top: 1px solid #d8dee4;
+  padding-top: 10px;
+  font-size: 14px;
+}
+
+.debug summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.debug dl {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 7px 10px;
+  margin: 10px 0 0;
+}
+
+.debug dt {
+  color: #5c6975;
+}
+
+.debug dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    padding: 14px 10px 18px;
+  }
+
+  h1 {
+    font-size: 24px;
+  }
+
+  .chat {
+    min-height: 52vh;
+  }
+
+  .composer,
+  .voice-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bubble {
+    max-width: 96%;
+    font-size: 17px;
+  }
+}
+

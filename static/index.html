@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EMU800 AI 故障處理助手</title>
+    <link rel="stylesheet" href="/static/style.css?v=20260808-mic1" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header>
+        <h1>EMU800 AI 故障處理助手</h1>
+      </header>
+
+      <section id="chat" class="chat" aria-live="polite">
+        <div class="message ai">
+          <div class="speaker">AI</div>
+          <div class="bubble">請說明目前遇到的故障。</div>
+        </div>
+      </section>
+
+      <form id="chatForm" class="composer">
+        <input id="messageInput" type="text" autocomplete="off" placeholder="輸入故障現象，例如 VCB不閉合" />
+        <button type="submit">送出</button>
+      </form>
+
+      <div class="voice-row">
+        <button id="voiceButton" type="button">開始語音</button>
+        <span id="voiceStatus">Realtime 尚未連線</span>
+      </div>
+
+      <details class="debug">
+        <summary>Debug</summary>
+        <dl>
+          <dt>session_id</dt>
+          <dd id="debugSession">-</dd>
+          <dt>retrieved sections</dt>
+          <dd id="debugSources">-</dd>
+          <dt>response latency</dt>
+          <dd id="debugLatency">-</dd>
+          <dt>realtime status</dt>
+          <dd id="debugRealtime">idle</dd>
+        </dl>
+      </details>
+    </main>
+    <audio id="remoteAudio" autoplay></audio>
+    <script src="/static/app.js?v=20260808-mic1"></script>
+  </body>
+</html>
