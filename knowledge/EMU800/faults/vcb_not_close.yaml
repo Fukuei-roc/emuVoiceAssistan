@@ -1,0 +1,554 @@
+```yaml
+procedure:
+  id: emu800_vcb_not_close
+  title: "EMU800 VCB 不閉合處理流程"
+  vehicle: "EMU800"
+  symptom: "VCB 不閉合"
+  start: timing
+
+  nodes:
+
+    # ==================================================
+    # 第一層：發生時機
+    # ==================================================
+
+    timing:
+      type: decision
+      question: "VCB 不閉合發生時機？"
+      options:
+        "出庫整備階段": depot_range
+        "行駛中": run_range
+
+    depot_range:
+      type: decision
+      question: "VCB 不閉合狀況？"
+      options:
+        "單組 VCB 不閉合": depot_battery_check
+        "兩組 VCB 均不閉合": double_voltage_check
+
+    run_range:
+      type: decision
+      question: "VCB 不閉合狀況？"
+      options:
+        "單組 VCB 不閉合": run_vcbar_check
+        "兩組 VCB 均不閉合": double_voltage_check
+
+
+    # ==================================================
+    # 出庫整備－單組 VCB 不閉合
+    # 步驟 1：110V 蓄電池
+    # ==================================================
+
+    depot_battery_check:
+      type: action
+      step: 1
+      action: "檢查 110V 蓄電池電壓"
+      location: "駕駛台左前方牆上"
+      device: "110V 蓄電池電壓表"
+      next: depot_battery_decision
+
+    depot_battery_decision:
+      type: decision
+      question: "110V 蓄電池電壓是否達 80V 以上？"
+      condition:
+        parameter: "110V 蓄電池電壓"
+        operator: ">="
+        value: 80
+        unit: "V"
+      options:
+        "是": depot_vcbar_check
+        "否": technical_support
+
+
+    # ==================================================
+    # 出庫整備－單組故障
+    # 步驟 2：VCBAR 判別與處置
+    # ==================================================
+
+    depot_vcbar_check:
+      type: action
+      step: 2
+      action: "進行 VCBAR 判別與處置"
+      location: "DDU 螢幕右上角"
+      device: "VCBAR"
+      indicators:
+        - 2
+        - 4
+        - 5
+        - 7
+      normal_state: "2、4、5、7 四個方塊全部亮綠色"
+      next: depot_vcbar_decision
+
+    depot_vcbar_decision:
+      type: decision
+      question: "VCBAR 2、4、5、7 是否全部亮綠色？"
+      options:
+        "是": depot_vcb_control_check
+        "否": depot_vcbar_failed_indicator
+
+    depot_vcbar_failed_indicator:
+      type: decision
+      question: "哪一個 VCBAR 方塊熄滅？"
+      options:
+        "2": depot_car_2
+        "4": depot_car_4
+        "5": depot_car_5
+        "7": depot_car_7
+
+    depot_car_2:
+      type: information
+      car_position: 2
+      car_description: "單數車號 EMA 車"
+      next: depot_ccos
+
+    depot_car_4:
+      type: information
+      car_position: 4
+      car_description: "單數車號 EMB 車"
+      next: depot_ccos
+
+    depot_car_5:
+      type: information
+      car_position: 5
+      car_description: "雙數車號 EMB 車"
+      next: depot_ccos
+
+    depot_car_7:
+      type: information
+      car_position: 7
+      car_description: "雙數車號 EMA 車"
+      next: depot_ccos
+
+    depot_ccos:
+      type: action
+      action: "將主變流器隔離開關（CCOS）扳至 1 位"
+      location: "對應車輛客室配電盤"
+      device: "主變流器隔離開關"
+      alias: "CCOS"
+      target_position: 1
+      next: depot_ccos_result
+
+    depot_ccos_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": resolved
+        "否": depot_vcb_control_check
+
+
+    # ==================================================
+    # 出庫整備－單組故障
+    # 步驟 3：VCB 控制無熔絲開關
+    # ==================================================
+
+    depot_vcb_control_check:
+      type: action
+      step: 3
+      action: "檢查 VCB 控制無熔絲開關"
+      location: "EP 車電氣室"
+      device: "VCB 控制無熔絲開關"
+      next: depot_vcb_control_decision
+
+    depot_vcb_control_decision:
+      type: decision
+      question: "VCB 控制無熔絲開關是否位於 ON？"
+      options:
+        "是": depot_oil_pump_check
+        "否": depot_vcb_control_on
+
+    depot_vcb_control_on:
+      type: action
+      action: "將 VCB 控制無熔絲開關扳至 ON"
+      location: "EP 車電氣室"
+      device: "VCB 控制無熔絲開關"
+      target_position: "ON"
+      next: depot_vcb_control_result
+
+    depot_vcb_control_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": resolved
+        "否": depot_oil_pump_check
+
+
+    # ==================================================
+    # 出庫整備－單組故障
+    # 步驟 4：主變壓器油泵無熔絲開關
+    # ==================================================
+
+    depot_oil_pump_check:
+      type: action
+      step: 4
+      action: "檢查主變壓器油泵無熔絲開關"
+      location: "EP 車電氣室"
+      device: "主變壓器油泵無熔絲開關"
+      next: depot_oil_pump_decision
+
+    depot_oil_pump_decision:
+      type: decision
+      question: "主變壓器油泵無熔絲開關是否位於 ON？"
+      options:
+        "是": depot_pressure_check
+        "否": depot_oil_pump_on
+
+    depot_oil_pump_on:
+      type: action
+      action: "將主變壓器油泵無熔絲開關扳至 ON"
+      location: "EP 車電氣室"
+      device: "主變壓器油泵無熔絲開關"
+      target_position: "ON"
+      next: depot_oil_pump_result
+
+    depot_oil_pump_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": resolved
+        "否": depot_pressure_check
+
+
+    # ==================================================
+    # 出庫整備－單組故障
+    # 步驟 5：VCB 限壓閥壓力
+    # ==================================================
+
+    depot_pressure_check:
+      type: action
+      step: 5
+      action: "檢查 VCB 限壓閥壓力錶"
+      location: "EP 車電氣室門旁牆上"
+      device: "VCB 限壓閥壓力錶"
+      next: depot_pressure_decision
+
+    depot_pressure_decision:
+      type: decision
+      question: "VCB 限壓閥壓力是否達 4.5 bar 以上？"
+      condition:
+        parameter: "VCB 限壓閥壓力"
+        operator: ">="
+        value: 4.5
+        unit: "bar"
+      options:
+        "是": depot_change_end
+        "否": technical_support
+
+
+    # ==================================================
+    # 出庫整備－單組故障
+    # 步驟 6：換端
+    # ==================================================
+
+    depot_change_end:
+      type: action
+      step: 6
+      action: "換端啟動"
+      location: "另一端 ED 車駕駛室"
+      description: "EMU800 為兩組車連掛，兩端駕駛室分別位於第 1 車與第 8 車的 ED 車；換端啟動係前往另一端駕駛室進行啟動操作。"
+      example:
+        formation: "EMU801 + EMU802"
+        end_1: "ED801（第 1 車）"
+        end_2: "ED802（第 8 車）"
+      next: depot_change_end_result
+
+    depot_change_end_result:
+      type: decision
+      question: "換端後 VCB 是否恢復閉合？"
+      options:
+        "是": resolved
+        "否": technical_support
+
+
+    # ==================================================
+    # 行駛中－單組 VCB 不閉合
+    # VCBAR 判別與處置
+    # ==================================================
+
+    run_vcbar_check:
+      type: action
+      action: "進行 VCBAR 判別與處置"
+      location: "DDU 螢幕右上角"
+      device: "VCBAR"
+      indicators:
+        - 2
+        - 4
+        - 5
+        - 7
+      normal_state: "2、4、5、7 四個方塊全部亮綠色"
+      next: run_vcbar_decision
+
+    run_vcbar_decision:
+      type: decision
+      question: "VCBAR 2、4、5、7 是否全部亮綠色？"
+      options:
+        "是": run_siv_transfer
+        "否": run_vcbar_failed_indicator
+
+    run_vcbar_failed_indicator:
+      type: decision
+      question: "哪一個 VCBAR 方塊熄滅？"
+      options:
+        "2": run_car_2
+        "4": run_car_4
+        "5": run_car_5
+        "7": run_car_7
+
+    run_car_2:
+      type: information
+      car_position: 2
+      car_description: "單數車號 EMA 車"
+      next: run_ccos
+
+    run_car_4:
+      type: information
+      car_position: 4
+      car_description: "單數車號 EMB 車"
+      next: run_ccos
+
+    run_car_5:
+      type: information
+      car_position: 5
+      car_description: "雙數車號 EMB 車"
+      next: run_ccos
+
+    run_car_7:
+      type: information
+      car_position: 7
+      car_description: "雙數車號 EMA 車"
+      next: run_ccos
+
+    run_ccos:
+      type: action
+      action: "將主變流器隔離開關（CCOS）扳至 1 位"
+      location: "對應車輛客室配電盤"
+      device: "主變流器隔離開關"
+      alias: "CCOS"
+      target_position: 1
+      next: run_vcb_recheck
+
+    run_vcb_recheck:
+      type: action
+      action: "回到駕駛室查看 DDU 螢幕，確認 VCB 是否恢復閉合"
+      location: "駕駛室"
+      device: "DDU 螢幕"
+      next: run_vcb_recheck_result
+
+    run_vcb_recheck_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": resolved
+        "否": run_siv_transfer
+
+    run_siv_transfer:
+      type: action
+      action: "將正常組 SIV 電源手動轉供至故障組"
+      location: "EMB 車客室配電盤"
+      device: "SIV 轉供操作裝置"
+      next: continue_running
+
+    continue_running:
+      type: end
+      result: "繼續行駛"
+
+
+    # ==================================================
+    # 兩組 VCB 均不閉合
+    # ==================================================
+
+    double_voltage_check:
+      type: action
+      action: "確認電車線電壓"
+      device: "電車線電壓顯示"
+      display_sources:
+        - method: "DDU 顯示"
+          location: "DDU 螢幕"
+          display: "電車線電壓"
+        - method: "電車線電壓表"
+          location: "駕駛台左前方牆上"
+          device: "電車線電壓表"
+      next: double_voltage_decision
+
+    double_voltage_decision:
+      type: decision
+      question: "電車線電壓是否在 19.0～27.5 kV？"
+      condition:
+        parameter: "電車線電壓"
+        operator: "between"
+        min: 19.0
+        max: 27.5
+        unit: "kV"
+      options:
+        "是": double_vcb_control_check
+        "否": notify_dispatcher
+
+    notify_dispatcher:
+      type: action
+      action: "以行調無線通知相關單位處理"
+      next: external_power_abnormal
+
+    external_power_abnormal:
+      type: end
+      result: "外部供電條件異常"
+
+
+    # ==================================================
+    # 兩組故障－VCB 控制無熔絲開關
+    # ==================================================
+
+    double_vcb_control_check:
+      type: action
+      action: "檢查 VCB 控制無熔絲開關"
+      location: "EP 車電氣室"
+      device: "VCB 控制無熔絲開關"
+      next: double_vcb_control_decision
+
+    double_vcb_control_decision:
+      type: decision
+      question: "VCB 控制無熔絲開關是否位於 ON？"
+      options:
+        "是": double_oil_pump_check
+        "否": double_vcb_control_on
+
+    double_vcb_control_on:
+      type: action
+      action: "將 VCB 控制無熔絲開關扳至 ON"
+      location: "EP 車電氣室"
+      device: "VCB 控制無熔絲開關"
+      target_position: "ON"
+      next: double_vcb_control_result
+
+    double_vcb_control_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": double_recovery_status
+        "否": double_oil_pump_check
+
+
+    # ==================================================
+    # 兩組故障－主變壓器油泵
+    # ==================================================
+
+    double_oil_pump_check:
+      type: action
+      action: "檢查主變壓器油泵無熔絲開關"
+      location: "EP 車電氣室"
+      device: "主變壓器油泵無熔絲開關"
+      next: double_oil_pump_decision
+
+    double_oil_pump_decision:
+      type: decision
+      question: "主變壓器油泵無熔絲開關是否位於 ON？"
+      options:
+        "是": double_pressure_check
+        "否": double_oil_pump_on
+
+    double_oil_pump_on:
+      type: action
+      action: "將主變壓器油泵無熔絲開關扳至 ON"
+      location: "EP 車電氣室"
+      device: "主變壓器油泵無熔絲開關"
+      target_position: "ON"
+      next: double_oil_pump_result
+
+    double_oil_pump_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": double_recovery_status
+        "否": double_pressure_check
+
+
+    # ==================================================
+    # 兩組故障－VCB 限壓閥壓力
+    # ==================================================
+
+    double_pressure_check:
+      type: action
+      action: "檢查 VCB 限壓閥壓力錶"
+      location: "EP 車電氣室門旁牆上"
+      device: "VCB 限壓閥壓力錶"
+      next: double_pressure_decision
+
+    double_pressure_decision:
+      type: decision
+      question: "VCB 限壓閥壓力是否達 4.5 bar 以上？"
+      condition:
+        parameter: "VCB 限壓閥壓力"
+        operator: ">="
+        value: 4.5
+        unit: "bar"
+      options:
+        "是但仍不閉合": double_change_end
+        "否": double_wait_pressure
+
+    double_wait_pressure:
+      type: action
+      action: "等待 VCB 限壓閥壓力達 4.5 bar 以上"
+      location: "EP 車電氣室門旁牆上"
+      device: "VCB 限壓閥壓力錶"
+      next: double_pressure_result
+
+    double_pressure_result:
+      type: decision
+      question: "VCB 是否恢復閉合？"
+      options:
+        "是": double_recovery_status
+        "否": double_change_end
+
+
+    # ==================================================
+    # 兩組故障－換端
+    # ==================================================
+
+    double_change_end:
+      type: action
+      action: "換端啟動"
+      location: "另一端 ED 車駕駛室"
+      description: "EMU800 為兩組車連掛，兩端駕駛室分別位於第 1 車與第 8 車的 ED 車；換端啟動係前往另一端駕駛室進行啟動操作。"
+      example:
+        formation: "EMU801 + EMU802"
+        end_1: "ED801（第 1 車）"
+        end_2: "ED802（第 8 車）"
+      next: double_change_end_result
+
+    double_change_end_result:
+      type: decision
+      question: "換端後 VCB 是否恢復閉合？"
+      options:
+        "是": double_recovery_status
+        "否": technical_support
+
+
+    # ==================================================
+    # 兩組故障－恢復狀態
+    # ==================================================
+
+    double_recovery_status:
+      type: decision
+      question: "目前 VCB 閉合狀況？"
+      options:
+        "兩組皆閉合": resolved
+        "僅一組閉合": double_siv_transfer
+
+    double_siv_transfer:
+      type: action
+      action: "將正常組 SIV 電源手動轉供至故障組"
+      location: "EMB 車客室配電盤"
+      device: "SIV 轉供操作裝置"
+      next: continue_running
+
+
+    # ==================================================
+    # 共用終點
+    # ==================================================
+
+    resolved:
+      type: end
+      result: "VCB 恢復閉合，流程結束"
+
+    technical_support:
+      type: end
+      result: "聯絡保養段檢查員，請求技術支援"
+```

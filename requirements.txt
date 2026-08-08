@@ -8,3 +8,4 @@ httpx
 markdown-it-py
 pytest
 
+PyYAML

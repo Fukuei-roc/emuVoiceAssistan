@@ -8,15 +8,35 @@ const remoteAudio = document.getElementById("remoteAudio");
 const debugSession = document.getElementById("debugSession");
 const debugSources = document.getElementById("debugSources");
 const debugLatency = document.getElementById("debugLatency");
+const debugExpected = document.getElementById("debugExpected");
+const debugParsed = document.getElementById("debugParsed");
+const debugTurnStatus = document.getElementById("debugTurnStatus");
 const debugRealtime = document.getElementById("debugRealtime");
+const debugRawUserText = document.getElementById("debugRawUserText");
+const debugInterpretationSource = document.getElementById("debugInterpretationSource");
+const debugSemanticResult = document.getElementById("debugSemanticResult");
+const debugRealtimeConnection = document.getElementById("debugRealtimeConnection");
+const debugRealtimeAudio = document.getElementById("debugRealtimeAudio");
 
 let sessionId = null;
 let peerConnection = null;
 let dataChannel = null;
 let localStream = null;
 let realtimeConnected = false;
-let realtimeResponseActive = false;
-let queuedRealtimeResponse = null;
+let activeAiText = "";
+
+function updateDebugState(data) {
+  debugSession.textContent = data.session_id || sessionId || "-";
+  const source = data.sources?.[0] || {};
+  const parts = [data.vehicle || source.vehicle, data.fault_id || source.fault_id, source.source].filter(Boolean);
+  debugSources.textContent = parts.join(" / ") || "-";
+  if (debugExpected) debugExpected.textContent = data.semantic_result?.knowledge_chars ? `knowledge chars=${data.semantic_result.knowledge_chars}` : "LLM-driven";
+  if (debugParsed) debugParsed.textContent = data.semantic_result ? JSON.stringify(data.semantic_result) : "-";
+  if (debugTurnStatus) debugTurnStatus.textContent = data.last_turn_status || "llm";
+  if (debugRawUserText) debugRawUserText.textContent = data.raw_user_text || "-";
+  if (debugInterpretationSource) debugInterpretationSource.textContent = data.interpretation_source || "llm";
+  if (debugSemanticResult) debugSemanticResult.textContent = data.semantic_result ? JSON.stringify(data.semantic_result) : "-";
+}
 
 function addMessage(role, text) {
   const item = document.createElement("div");
@@ -30,6 +50,7 @@ function addMessage(role, text) {
   item.append(speaker, bubble);
   chat.appendChild(item);
   chat.scrollTop = chat.scrollHeight;
+  return bubble;
 }
 
 function setRealtimeStatus(text) {
@@ -41,12 +62,10 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = input.value.trim();
   if (!message) return;
-
   input.value = "";
   input.focus();
   addMessage("user", message);
   const startedAt = performance.now();
-
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -54,13 +73,10 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({ session_id: sessionId, message }),
     });
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.detail || "文字對話失敗");
-    }
+    if (!response.ok) throw new Error(data.detail || "文字對話失敗");
     sessionId = data.session_id;
     addMessage("ai", data.reply);
-    debugSession.textContent = sessionId;
-    debugSources.textContent = (data.sources || []).map((item) => item.heading).join(" / ") || "-";
+    updateDebugState(data);
     debugLatency.textContent = `${data.latency_ms || Math.round(performance.now() - startedAt)} ms`;
   } catch (error) {
     addMessage("ai", error.message);
@@ -79,68 +95,59 @@ voiceButton.addEventListener("click", async () => {
 async function startRealtime() {
   voiceButton.disabled = true;
   setRealtimeStatus("準備麥克風...");
-
   try {
     ensureMicrophoneAvailable();
+    if (!sessionId) sessionId = `realtime-${crypto.randomUUID()}`;
+    unlockAudioElement();
+
+    setRealtimeStatus("請允許瀏覽器使用麥克風...");
+    localStream = await getMicrophoneStream();
+    setRealtimeStatus("麥克風已啟用，載入 YAML context...");
+    const context = await fetch("/api/realtime/context").then((response) => response.json());
+    updateRealtimeContextDebug(context);
+
     peerConnection = new RTCPeerConnection();
-    peerConnection.ontrack = (event) => {
+    peerConnection.onconnectionstatechange = () => {
+      if (debugRealtimeConnection) debugRealtimeConnection.textContent = peerConnection.connectionState;
+      console.info("REALTIME AUDIO connection state", peerConnection.connectionState);
+    };
+    peerConnection.ontrack = async (event) => {
+      console.info("REALTIME AUDIO remote track received", event.track.kind);
+      if (debugRealtimeAudio) debugRealtimeAudio.textContent = `remote track: ${event.track.kind}`;
       remoteAudio.srcObject = event.streams[0];
+      remoteAudio.autoplay = true;
+      remoteAudio.playsInline = true;
+      try {
+        await remoteAudio.play();
+        if (debugRealtimeAudio) debugRealtimeAudio.textContent = "audio playback started";
+      } catch (error) {
+        if (debugRealtimeAudio) debugRealtimeAudio.textContent = `audio playback failed: ${error.message}`;
+      }
     };
 
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
 
     dataChannel = peerConnection.createDataChannel("oai-events");
     dataChannel.addEventListener("open", () => {
-      setRealtimeStatus("Realtime 已連線");
-      sendRealtimeEvent({
-        type: "session.update",
-        session: {
-          type: "realtime",
-          instructions:
-            "你是 EMU800 型電聯車故障處理訓練助手。回答要適合語音播放，簡短直接。在回答任何故障處置、設備操作、數值門檻或下一步確認前，必須先呼叫 searchKnowledge 工具。只能根據 searchKnowledge 回傳的 EMU800 手冊內容回答；不得使用常識、推測、其他車型經驗或未提供的手冊內容。如果 tool 結果不足以決定下一步，直接說目前資料不足，並只問一個必要的釐清問題。若 tool 回傳多個章節，優先使用最符合目前故障與目前對話的章節，不要混用不相關章節。不得自行發明或簡化強迫激磁、隔離、SIV轉供、降弓、KEY OFF、考克等操作。一次只能提出一個問句；不要把多個確認項目合併在同一則回答。若使用者只回答數值、狀態或短語，必須先判斷它是否是在回答上一輪問題；例如上一輪詢問電車線電壓時，使用者回答「25KV」就是電車線電壓為 25 kV。若已能判斷使用者回答落在手冊正常範圍或異常範圍，直接依手冊進入下一個步驟，不要重複詢問同一問題。",
-          tools: [
-            {
-              type: "function",
-              name: "searchKnowledge",
-              description: "Search EMU800 troubleshooting Markdown knowledge.",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: { type: "string", description: "故障現象或關鍵字，例如 VCB不閉合" },
-                },
-                required: ["query"],
-              },
-            },
-          ],
-        },
-      });
-      requestRealtimeResponse({
-        modalities: ["audio", "text"],
-        instructions: "請用繁體中文先詢問使用者目前遇到的故障。",
-      });
+      setRealtimeStatus("Realtime 已連線，LLM 讀取完整 YAML 中");
+      sendRealtimeEvent({ type: "session.update", session: context.session });
+      requestInitialRealtimeResponse();
     });
     dataChannel.addEventListener("message", handleRealtimeEvent);
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
     const localSdp = peerConnection.localDescription?.sdp || offer.sdp || "";
-    if (!localSdp.trim()) {
-      throw new Error("瀏覽器產生的 SDP offer 是空的");
-    }
+    if (!localSdp.trim()) throw new Error("瀏覽器產生的 SDP offer 是空的");
     setRealtimeStatus(`交換 WebRTC SDP... offer length=${localSdp.length}`);
-
     const sdpResponse = await fetch("/api/realtime/call", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sdp: localSdp }),
     });
     const sdpPayload = await sdpResponse.json();
-    if (!sdpResponse.ok) {
-      throw new Error(sdpPayload.detail || `WebRTC SDP 交換失敗：${sdpResponse.status}`);
-    }
-    const answer = { type: "answer", sdp: sdpPayload.sdp };
-    await peerConnection.setRemoteDescription(answer);
+    if (!sdpResponse.ok) throw new Error(sdpPayload.detail || `WebRTC SDP 交換失敗：${sdpResponse.status}`);
+    await peerConnection.setRemoteDescription({ type: "answer", sdp: sdpPayload.sdp });
 
     realtimeConnected = true;
     voiceButton.textContent = "停止語音";
@@ -151,6 +158,63 @@ async function startRealtime() {
   } finally {
     voiceButton.disabled = false;
   }
+}
+
+function unlockAudioElement() {
+  remoteAudio.autoplay = true;
+  remoteAudio.playsInline = true;
+  remoteAudio.muted = false;
+  // Do not await play() before a MediaStream is attached. On some mobile
+  // browsers that promise stays pending forever and blocks getUserMedia().
+  const playPromise = remoteAudio.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => {
+      if (debugRealtimeAudio) debugRealtimeAudio.textContent = "audio unlocked after remote track";
+    });
+  }
+}
+
+async function getMicrophoneStream() {
+  const request = navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+  const timeout = new Promise((_, reject) => {
+    window.setTimeout(() => reject(new Error("麥克風授權逾時。請確認瀏覽器是否跳出允許麥克風的提示，並允許此網站使用麥克風。")), 15000);
+  });
+  try {
+    return await Promise.race([request, timeout]);
+  } catch (error) {
+    if (error && error.name === "NotAllowedError") {
+      throw new Error("麥克風權限被拒絕。請在瀏覽器網站設定允許麥克風後再試一次。");
+    }
+    if (error && error.name === "NotFoundError") {
+      throw new Error("找不到可用麥克風。請確認裝置有麥克風並未被其他程式占用。");
+    }
+    throw error;
+  }
+}
+
+function updateRealtimeContextDebug(context) {
+  if (debugExpected) debugExpected.textContent = `knowledge chars=${context.knowledge_chars || 0}`;
+  if (debugSemanticResult) debugSemanticResult.textContent = JSON.stringify({ mode: context.mode, knowledge_chars: context.knowledge_chars, sources: context.sources });
+  if (debugInterpretationSource) debugInterpretationSource.textContent = "realtime-llm";
+  const source = context.sources?.[0] || {};
+  debugSources.textContent = [source.vehicle, source.fault_id, source.source].filter(Boolean).join(" / ") || "-";
+}
+
+function requestInitialRealtimeResponse() {
+  if (debugRealtimeAudio) debugRealtimeAudio.textContent = "response audio requested";
+  sendRealtimeEvent({
+    type: "response.create",
+    response: {
+      modalities: ["audio", "text"],
+      instructions: "請用一句話開始教學對話：請司機員說明目前遇到的故障。只問這一題，說完就停。",
+    },
+  });
 }
 
 function ensureMicrophoneAvailable() {
@@ -170,8 +234,7 @@ function stopRealtime(updateStatus = true) {
   peerConnection = null;
   localStream = null;
   realtimeConnected = false;
-  realtimeResponseActive = false;
-  queuedRealtimeResponse = null;
+  activeAiText = "";
   voiceButton.textContent = "開始語音";
   voiceButton.classList.remove("connected");
   voiceButton.disabled = false;
@@ -184,17 +247,6 @@ function sendRealtimeEvent(event) {
   }
 }
 
-function requestRealtimeResponse(response = null) {
-  if (realtimeResponseActive) {
-    queuedRealtimeResponse = response || {};
-    return;
-  }
-  realtimeResponseActive = true;
-  const event = { type: "response.create" };
-  if (response) event.response = response;
-  sendRealtimeEvent(event);
-}
-
 async function handleRealtimeEvent(event) {
   let payload;
   try {
@@ -202,58 +254,57 @@ async function handleRealtimeEvent(event) {
   } catch {
     return;
   }
-
   if (payload.type === "error") {
-    if ((payload.error?.message || "").includes("active response in progress")) {
-      queuedRealtimeResponse = queuedRealtimeResponse || {};
-      setRealtimeStatus("Realtime 正在回答，已等待目前回答完成");
-      return;
-    }
     setRealtimeStatus(payload.error?.message || "Realtime error");
     return;
   }
-
-  if (payload.type === "response.created") {
-    realtimeResponseActive = true;
+  if (payload.type === "session.updated") {
+    setRealtimeStatus("Realtime YAML context 已載入");
+    return;
   }
-
+  const userTranscript = extractUserTranscript(payload);
+  if (userTranscript) {
+    if (debugRawUserText) debugRawUserText.textContent = userTranscript;
+    addMessage("user", userTranscript);
+    return;
+  }
+  const aiDelta = extractAiTranscriptDelta(payload);
+  if (aiDelta) {
+    activeAiText += aiDelta;
+    if (debugParsed) debugParsed.textContent = activeAiText;
+    return;
+  }
+  const aiDone = extractAiTranscriptDone(payload);
+  if (aiDone) {
+    addMessage("ai", aiDone);
+    activeAiText = "";
+    return;
+  }
   if (payload.type === "response.done") {
-    realtimeResponseActive = false;
-    if (queuedRealtimeResponse) {
-      const nextResponse = queuedRealtimeResponse;
-      queuedRealtimeResponse = null;
-      requestRealtimeResponse(nextResponse);
-    }
-  }
-
-  const textDelta = payload.delta || payload.text;
-  if (payload.type === "response.text.delta" && textDelta) {
-    debugRealtime.textContent = `text: ${textDelta}`;
-  }
-
-  const item = payload.item;
-  if (item && item.type === "function_call" && item.name === "searchKnowledge" && item.call_id) {
-    let args = {};
-    try {
-      args = JSON.parse(item.arguments || "{}");
-    } catch {
-      args = {};
-    }
-    const result = await fetch("/api/realtime/searchKnowledge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: args.query || "" }),
-    }).then((response) => response.json());
-
-    debugSources.textContent = (result.results || []).map((section) => section.heading).join(" / ") || "-";
-    sendRealtimeEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: item.call_id,
-        output: JSON.stringify(result),
-      },
-    });
-    requestRealtimeResponse();
+    setRealtimeStatus("等待使用者回答");
   }
 }
+
+function extractUserTranscript(payload) {
+  if ((payload.type === "conversation.item.input_audio_transcription.completed" || payload.type === "input_audio_transcription.completed") && payload.transcript) {
+    return payload.transcript.trim();
+  }
+  return "";
+}
+
+function extractAiTranscriptDelta(payload) {
+  if ((payload.type === "response.output_audio_transcript.delta" || payload.type === "response.audio_transcript.delta") && payload.delta) {
+    return payload.delta;
+  }
+  return "";
+}
+
+function extractAiTranscriptDone(payload) {
+  if ((payload.type === "response.output_audio_transcript.done" || payload.type === "response.audio_transcript.done") && payload.transcript) {
+    return payload.transcript.trim();
+  }
+  return "";
+}
+
+
+

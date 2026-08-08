@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EMU800 AI 故障處理助手</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260808-mic1" />
+    <title>EMU AI 故障處理助手</title>
+    <link rel="stylesheet" href="/static/style.css?v=20260809-llm-yaml1" />
   </head>
   <body>
     <main class="app-shell">
       <header>
-        <h1>EMU800 AI 故障處理助手</h1>
+        <h1>EMU AI 故障處理助手</h1>
       </header>
 
       <section id="chat" class="chat" aria-live="polite">
@@ -34,8 +34,24 @@
         <dl>
           <dt>session_id</dt>
           <dd id="debugSession">-</dd>
-          <dt>retrieved sections</dt>
+          <dt>state</dt>
           <dd id="debugSources">-</dd>
+          <dt>knowledge</dt>
+          <dd id="debugExpected">-</dd>
+          <dt>last AI transcript</dt>
+          <dd id="debugParsed">-</dd>
+          <dt>turn status</dt>
+          <dd id="debugTurnStatus">-</dd>
+          <dt>raw_user_text</dt>
+          <dd id="debugRawUserText">-</dd>
+          <dt>mode</dt>
+          <dd id="debugInterpretationSource">-</dd>
+          <dt>semantic_result</dt>
+          <dd id="debugSemanticResult">-</dd>
+          <dt>realtime connection</dt>
+          <dd id="debugRealtimeConnection">-</dd>
+          <dt>realtime audio</dt>
+          <dd id="debugRealtimeAudio">-</dd>
           <dt>response latency</dt>
           <dd id="debugLatency">-</dd>
           <dt>realtime status</dt>
@@ -44,6 +60,14 @@
       </details>
     </main>
     <audio id="remoteAudio" autoplay></audio>
-    <script src="/static/app.js?v=20260808-mic1"></script>
+    <script src="/static/app.js?v=20260809-llm-yaml1"></script>
   </body>
 </html>
+
+
+
+
+
+
+
+

@@ -6,3 +6,5 @@ __pycache__/
 data/*.db
 data/*.db-*
 Prompt.md
+VCB不閉合流程圖.yaml
+VCB不閉合流程圖.md

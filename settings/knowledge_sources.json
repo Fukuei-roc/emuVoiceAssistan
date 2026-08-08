@@ -1,10 +1,13 @@
 {
-  "default_vehicle": "EMU800",
   "vehicles": [
     {
       "vehicle": "EMU800",
-      "documents": [
-        "knowledge/EMU800/EMU800_故障處理流程_AI整理版.md"
+      "faults": [
+        {
+          "id": "vcb_not_close",
+          "name": "VCB不閉合",
+          "file": "knowledge/EMU800/faults/vcb_not_close.yaml"
+        }
       ]
     }
   ]
