@@ -2,7 +2,6 @@ fastapi
 uvicorn[standard]
 pydantic
 pydantic-settings
-python-dotenv
 openai
 httpx
 markdown-it-py

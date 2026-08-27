@@ -2,72 +2,92 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f7f9" />
+    <meta name="color-scheme" content="light" />
     <title>EMU AI 故障處理助手</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260809-llm-yaml1" />
+    <link rel="icon" href="/static/favicon.svg?v=20260827-voice2" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css?v=20260827-tra-blue1" />
   </head>
   <body>
-    <main class="app-shell">
-      <header>
-        <h1>EMU AI 故障處理助手</h1>
+    <div class="app-shell" data-voice-state="idle">
+      <header class="app-header">
+        <a class="wordmark" href="/" aria-label="EMU AI 首頁">
+          <span class="wordmark-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M8.5 9h7M9 13h.01M15 13h.01M8 17l-2 3m10-3 2 3"/></svg></span>
+          <span>EMU AI</span>
+        </a>
+        <div class="header-controls">
+          <div id="voiceIndicator" class="mini-status" data-state="idle" role="status"><span></span><b id="voiceStatus">待命</b></div>
+          <button id="historyToggle" class="icon-button" type="button" aria-label="查看對話紀錄" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></button>
+        </div>
       </header>
 
-      <section id="chat" class="chat" aria-live="polite">
-        <div class="message ai">
-          <div class="speaker">AI</div>
-          <div class="bubble">請說明目前遇到的故障。</div>
-        </div>
+      <main class="voice-main">
+        <section class="task-stage" aria-labelledby="taskTitle">
+          <div class="flow-cue" aria-label="AI 正在逐步引導">
+            <span class="flow-node is-active"></span><span class="flow-line"></span><span class="flow-node"></span><span class="flow-line"></span><span class="flow-node"></span>
+            <b id="flowLabel">流程準備</b>
+          </div>
+          <div id="currentTask" class="current-task">
+            <span class="task-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 18h5M10 22h4M8.4 14.5A7 7 0 1 1 16 14c-.9.7-1.5 1.7-1.5 2.8h-5c0-.9-.3-1.7-1.1-2.3Z"/></svg>目前任務</span>
+            <h1 id="taskTitle">告訴我發生什麼狀況</h1>
+            <p id="taskSupport">點一下下方語音核心，直接開口描述故障。</p>
+          </div>
+        </section>
+
+        <section class="voice-stage" aria-label="語音控制">
+          <button id="voiceButton" class="voice-orb" type="button" aria-label="開始語音" aria-pressed="false">
+            <span class="orb-halo orb-halo-one" aria-hidden="true"></span>
+            <span class="orb-halo orb-halo-two" aria-hidden="true"></span>
+            <span class="orb-surface" aria-hidden="true">
+              <span class="orb-sheen"></span>
+              <svg class="orb-mic" viewBox="0 0 32 32"><rect x="11" y="5" width="10" height="15" rx="5"/><path d="M7.5 16.5a8.5 8.5 0 0 0 17 0M16 25v4M12 29h8"/></svg>
+              <svg class="orb-stop" viewBox="0 0 32 32"><rect x="10" y="10" width="12" height="12" rx="2.5"/></svg>
+              <span class="orb-wave"><i></i><i></i><i></i><i></i><i></i></span>
+              <span class="orb-thinking"><i></i><i></i><i></i></span>
+            </span>
+          </button>
+          <div class="voice-copy">
+            <strong id="voiceActionTitle">點一下開始說話</strong>
+            <span id="voiceActionHint">AI 已準備好協助你</span>
+          </div>
+        </section>
+      </main>
+
+      <nav class="action-dock" aria-label="其他輸入方式">
+        <button id="textToggle" class="secondary-action" type="button" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4zM7 10h.01M11 10h.01M15 10h.01M8 14h8"/></svg><span>輸入文字</span></button>
+        <span class="dock-divider"></span>
+        <button id="stopVoiceButton" class="secondary-action stop-action" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg><span>停止語音</span></button>
+      </nav>
+
+      <section id="composerDrawer" class="bottom-drawer composer-drawer" aria-label="文字輸入" hidden>
+        <div class="drawer-handle" aria-hidden="true"></div>
+        <div class="drawer-heading"><div><span>備用輸入</span><strong>用文字回答 AI</strong></div><button id="textClose" class="icon-button" type="button" aria-label="關閉文字輸入">×</button></div>
+        <form id="chatForm" class="composer">
+          <label for="messageInput"><span class="sr-only">輸入訊息</span><input id="messageInput" type="text" autocomplete="off" enterkeyhint="send" placeholder="輸入目前狀況或回答…" /></label>
+          <button id="sendButton" type="submit" aria-label="送出訊息" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V6m0 0-5 5m5-5 5 5"/></svg></button>
+        </form>
       </section>
 
-      <form id="chatForm" class="composer">
-        <input id="messageInput" type="text" autocomplete="off" placeholder="輸入故障現象，例如 VCB不閉合" />
-        <button type="submit">送出</button>
-      </form>
+      <section id="historyPanel" class="bottom-drawer history-panel" aria-label="對話紀錄" hidden>
+        <div class="drawer-handle" aria-hidden="true"></div>
+        <div class="drawer-heading"><div><span>SESSION</span><strong>對話紀錄</strong></div><button id="historyClose" class="icon-button" type="button" aria-label="關閉對話紀錄">×</button></div>
+        <div id="chat" class="history-list" aria-live="polite">
+          <div class="history-message ai"><span class="history-role">AI</span><p>請說明目前遇到的故障。</p></div>
+        </div>
+        <details class="debug developer-panel">
+          <summary>開發資訊</summary>
+          <dl>
+            <dt>session_id</dt><dd id="debugSession">-</dd><dt>state</dt><dd id="debugSources">-</dd><dt>knowledge</dt><dd id="debugExpected">-</dd><dt>last AI transcript</dt><dd id="debugParsed">-</dd><dt>turn status</dt><dd id="debugTurnStatus">-</dd><dt>raw_user_text</dt><dd id="debugRawUserText">-</dd><dt>mode</dt><dd id="debugInterpretationSource">-</dd><dt>semantic_result</dt><dd id="debugSemanticResult">-</dd><dt>realtime connection</dt><dd id="debugRealtimeConnection">-</dd><dt>realtime audio</dt><dd id="debugRealtimeAudio">-</dd><dt>response latency</dt><dd id="debugLatency">-</dd><dt>realtime status</dt><dd id="debugRealtime">idle</dd>
+          </dl>
+        </details>
+      </section>
 
-      <div class="voice-row">
-        <button id="voiceButton" type="button">開始語音</button>
-        <span id="voiceStatus">Realtime 尚未連線</span>
-      </div>
-
-      <details class="debug">
-        <summary>Debug</summary>
-        <dl>
-          <dt>session_id</dt>
-          <dd id="debugSession">-</dd>
-          <dt>state</dt>
-          <dd id="debugSources">-</dd>
-          <dt>knowledge</dt>
-          <dd id="debugExpected">-</dd>
-          <dt>last AI transcript</dt>
-          <dd id="debugParsed">-</dd>
-          <dt>turn status</dt>
-          <dd id="debugTurnStatus">-</dd>
-          <dt>raw_user_text</dt>
-          <dd id="debugRawUserText">-</dd>
-          <dt>mode</dt>
-          <dd id="debugInterpretationSource">-</dd>
-          <dt>semantic_result</dt>
-          <dd id="debugSemanticResult">-</dd>
-          <dt>realtime connection</dt>
-          <dd id="debugRealtimeConnection">-</dd>
-          <dt>realtime audio</dt>
-          <dd id="debugRealtimeAudio">-</dd>
-          <dt>response latency</dt>
-          <dd id="debugLatency">-</dd>
-          <dt>realtime status</dt>
-          <dd id="debugRealtime">idle</dd>
-        </dl>
-      </details>
-    </main>
-    <audio id="remoteAudio" autoplay></audio>
-    <script src="/static/app.js?v=20260809-llm-yaml1"></script>
+      <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+      <div id="thinkingIndicator" class="sr-only" role="status" aria-live="polite" hidden>AI 正在分析</div>
+      <div id="appNotice" class="app-notice" role="alert" hidden><span class="notice-symbol">!</span><span><strong id="noticeTitle">連線未完成</strong><small id="noticeMessage">請稍後再試一次。</small></span><button id="noticeDismiss" type="button" aria-label="關閉提示">×</button></div>
+    </div>
+    <audio id="remoteAudio" autoplay playsinline></audio>
+    <script src="/static/app.js?v=20260827-voice-noquick1"></script>
   </body>
 </html>
-
-
-
-
-
-
-
-

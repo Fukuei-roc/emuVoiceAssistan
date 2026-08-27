@@ -36,9 +36,11 @@ Copy-Item .env.example .env
 
 ```text
 OPENAI_API_KEY=
-OPENAI_TEXT_MODEL=gpt-4.1-mini
-OPENAI_REALTIME_MODEL=gpt-realtime
 ```
+
+`.env` 只保存敏感資訊。可納入版本控制的一般應用程式設定位於
+`settings/application.toml`，其中包含文字模型、Realtime 模型與
+`server_vad` threshold。
 
 啟動：
 
@@ -52,6 +54,35 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 http://localhost:8000
 ```
 
+## Docker Compose（Ubuntu VPS）
+
+先建立環境變數檔並填入 OpenAI API key：
+
+```bash
+cp .env.example .env
+```
+
+建置並啟動：
+
+```bash
+docker compose up -d --build
+```
+
+檢查狀態與 log：
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+停止服務：
+
+```bash
+docker compose down
+```
+
+對外使用 `8000` port。Compose 使用 named volume 保存 `/app/data`，且不會把 `.env` 或 OpenAI API key 寫入 image；`settings/` 內的非敏感設定會包含在 image 中。
+
 ## Knowledge
 
 正式故障流程 YAML 放在：
@@ -63,6 +94,7 @@ knowledge/EMU800/faults/vcb_not_close.yaml
 設定檔：
 
 ```text
+settings/application.toml
 settings/knowledge_sources.json
 ```
 

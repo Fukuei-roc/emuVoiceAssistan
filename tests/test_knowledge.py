@@ -52,6 +52,7 @@ def test_realtime_session_config_is_llm_driven_with_audio():
     assert session["tools"] == []
     assert session["tool_choice"] == "none"
     assert session["audio"]["input"]["turn_detection"]["create_response"] is True
+    assert session["audio"]["input"]["turn_detection"]["threshold"] == 0.7
     assert session["audio"]["output"]["voice"] == "alloy"
     assert "double_voltage_decision" in session["instructions"]
     assert "一次只問一個問題" in session["instructions"]
@@ -70,7 +71,7 @@ def test_realtime_context_reports_sources_and_knowledge_chars():
 def test_frontend_has_remote_audio_playback_and_no_submit_answer_loop():
     js = (ROOT_DIR / "static" / "app.js").read_text(encoding="utf-8")
     assert "remoteAudio.play()" in js
-    assert "modalities: [\"audio\", \"text\"]" in js
+    assert "output_modalities: [\"audio\"]" in js
     assert "session.update" in js
     assert "/api/realtime/context" in js
     assert "/api/realtime/submitAnswer" not in js

@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from app.config import ApplicationFileSettings, settings
 from app.main import app, chat_service
 
 
@@ -59,8 +62,45 @@ def test_realtime_context_contains_yaml_prompt():
     data = response.json()
     assert data["mode"] == "llm_driven"
     assert data["session"]["audio"]["input"]["turn_detection"]["create_response"] is True
+    assert data["session"]["audio"]["input"]["turn_detection"]["threshold"] == 0.7
     assert "一次只問一個問題" in data["instructions"]
     assert "double_voltage_decision" in data["instructions"]
+
+
+def test_application_models_and_vad_are_loaded_from_toml():
+    assert settings.openai_text_model == "gpt-4.1-mini"
+    assert settings.openai_realtime_model == "gpt-realtime"
+    assert settings.openai_realtime_vad_threshold == 0.7
+
+
+@pytest.mark.parametrize("threshold", [-0.01, 1.01])
+def test_application_settings_reject_invalid_vad_threshold(threshold):
+    with pytest.raises(ValidationError):
+        ApplicationFileSettings.model_validate(
+            {
+                "OPENAI_TEXT_MODEL": "gpt-4.1-mini",
+                "OPENAI_REALTIME_MODEL": "gpt-realtime",
+                "OPENAI_REALTIME_VAD_THRESHOLD": threshold,
+            }
+        )
+
+
+def test_application_settings_reject_blank_model_names():
+    with pytest.raises(ValidationError):
+        ApplicationFileSettings.model_validate(
+            {
+                "OPENAI_TEXT_MODEL": "   ",
+                "OPENAI_REALTIME_MODEL": "gpt-realtime",
+                "OPENAI_REALTIME_VAD_THRESHOLD": 0.7,
+            }
+        )
+
+
+def test_secret_example_and_application_settings_are_separated():
+    env_example = Path(".env.example").read_text(encoding="utf-8").strip()
+    application_toml = Path("settings/application.toml").read_text(encoding="utf-8")
+    assert env_example == "OPENAI_API_KEY="
+    assert "OPENAI_API_KEY" not in application_toml
 
 
 def test_text_chat_uses_llm_history_and_yaml_prompt(monkeypatch):
@@ -81,6 +121,20 @@ def test_text_chat_uses_llm_history_and_yaml_prompt(monkeypatch):
 
 def test_frontend_debug_fields_exist():
     html = Path("static/index.html").read_text(encoding="utf-8")
+    javascript = Path("static/app.js").read_text(encoding="utf-8")
     assert "debugRealtimeAudio" in html
     assert "debugRawUserText" in html
-    assert "llm-yaml1" in html
+    assert "20260827-voice2" in html
+    assert "voiceIndicator" in html
+    assert "thinkingIndicator" in html
+    assert "quickReplies" not in html
+    assert "composerDrawer" in html
+    assert "historyPanel" in html
+    assert "viewport-fit=cover" in html
+    assert "20260827-voice-noquick1" in html
+    assert 'output_modalities: ["audio"]' in javascript
+    assert 'modalities: ["audio", "text"]' not in javascript
+    assert "Recoverable Realtime event error" in javascript
+    assert "connectionGeneration" in javascript
+    assert "getQuickReplyOptions" not in javascript
+    assert "renderQuickReplies" not in javascript

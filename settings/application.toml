@@ -1,0 +1,10 @@
+# Non-secret application settings. This file is safe to commit.
+OPENAI_TEXT_MODEL = "gpt-4.1-mini"
+OPENAI_REALTIME_MODEL = "gpt-realtime"
+
+# OpenAI Realtime server_vad activation threshold.
+# Valid range: 0.0 to 1.0. Current value: 0.7.
+# Higher values require louder audio to trigger speech detection and can reduce
+# activation from background noise. Lower values are more sensitive to quiet
+# speech, but may also react more readily to ambient sound.
+OPENAI_REALTIME_VAD_THRESHOLD = 0.7
