@@ -379,8 +379,38 @@ procedure:
         max: 27.5
         unit: "kV"
       options:
-        "是": double_vcb_control_check
-        "否": notify_dispatcher
+        "是": double_restart_vehicle
+        "否": pantograph_up_decision
+
+
+    # ==================================================
+    # 兩組 VCB 均不閉合－電車線電壓正常
+    # 降弓、KEY-OFF、重新啟動
+    # ==================================================
+
+    double_restart_vehicle:
+      type: action
+      action: "嘗試降弓、KEY-OFF、重新啟動車輛"
+      next: double_restart_result
+
+    double_restart_result:
+      type: decision
+      question: "重新啟動車輛後，VCB 是否恢復閉合？"
+      options:
+        "是": resolved
+        "否": technical_support
+
+
+    # ==================================================
+    # 兩組 VCB 均不閉合－電車線電壓異常
+    # ==================================================
+
+    pantograph_up_decision:
+      type: decision
+      question: "集電弓是否升起？"
+      options:
+        "是": notify_dispatcher
+        "否": pantograph_not_up_troubleshooting
 
     notify_dispatcher:
       type: action
@@ -391,153 +421,9 @@ procedure:
       type: end
       result: "外部供電條件異常"
 
-
-    # ==================================================
-    # 兩組故障－VCB 控制無熔絲開關
-    # ==================================================
-
-    double_vcb_control_check:
-      type: action
-      action: "檢查 VCB 控制無熔絲開關"
-      location: "EP 車電氣室"
-      device: "VCB 控制無熔絲開關"
-      next: double_vcb_control_decision
-
-    double_vcb_control_decision:
-      type: decision
-      question: "VCB 控制無熔絲開關是否位於 ON？"
-      options:
-        "是": double_oil_pump_check
-        "否": double_vcb_control_on
-
-    double_vcb_control_on:
-      type: action
-      action: "將 VCB 控制無熔絲開關扳至 ON"
-      location: "EP 車電氣室"
-      device: "VCB 控制無熔絲開關"
-      target_position: "ON"
-      next: double_vcb_control_result
-
-    double_vcb_control_result:
-      type: decision
-      question: "VCB 是否恢復閉合？"
-      options:
-        "是": double_recovery_status
-        "否": double_oil_pump_check
-
-
-    # ==================================================
-    # 兩組故障－主變壓器油泵
-    # ==================================================
-
-    double_oil_pump_check:
-      type: action
-      action: "檢查主變壓器油泵無熔絲開關"
-      location: "EP 車電氣室"
-      device: "主變壓器油泵無熔絲開關"
-      next: double_oil_pump_decision
-
-    double_oil_pump_decision:
-      type: decision
-      question: "主變壓器油泵無熔絲開關是否位於 ON？"
-      options:
-        "是": double_pressure_check
-        "否": double_oil_pump_on
-
-    double_oil_pump_on:
-      type: action
-      action: "將主變壓器油泵無熔絲開關扳至 ON"
-      location: "EP 車電氣室"
-      device: "主變壓器油泵無熔絲開關"
-      target_position: "ON"
-      next: double_oil_pump_result
-
-    double_oil_pump_result:
-      type: decision
-      question: "VCB 是否恢復閉合？"
-      options:
-        "是": double_recovery_status
-        "否": double_pressure_check
-
-
-    # ==================================================
-    # 兩組故障－VCB 限壓閥壓力
-    # ==================================================
-
-    double_pressure_check:
-      type: action
-      action: "檢查 VCB 限壓閥壓力錶"
-      location: "EP 車電氣室門旁牆上"
-      device: "VCB 限壓閥壓力錶"
-      next: double_pressure_decision
-
-    double_pressure_decision:
-      type: decision
-      question: "VCB 限壓閥壓力是否達 4.5 bar 以上？"
-      condition:
-        parameter: "VCB 限壓閥壓力"
-        operator: ">="
-        value: 4.5
-        unit: "bar"
-      options:
-        "是但仍不閉合": double_change_end
-        "否": double_wait_pressure
-
-    double_wait_pressure:
-      type: action
-      action: "等待 VCB 限壓閥壓力達 4.5 bar 以上"
-      location: "EP 車電氣室門旁牆上"
-      device: "VCB 限壓閥壓力錶"
-      next: double_pressure_result
-
-    double_pressure_result:
-      type: decision
-      question: "VCB 是否恢復閉合？"
-      options:
-        "是": double_recovery_status
-        "否": double_change_end
-
-
-    # ==================================================
-    # 兩組故障－換端
-    # ==================================================
-
-    double_change_end:
-      type: action
-      action: "換端啟動"
-      location: "另一端 ED 車駕駛室"
-      description: "EMU800 為兩組車連掛，兩端駕駛室分別位於第 1 車與第 8 車的 ED 車；換端啟動係前往另一端駕駛室進行啟動操作。"
-      example:
-        formation: "EMU801 + EMU802"
-        end_1: "ED801（第 1 車）"
-        end_2: "ED802（第 8 車）"
-      next: double_change_end_result
-
-    double_change_end_result:
-      type: decision
-      question: "換端後 VCB 是否恢復閉合？"
-      options:
-        "是": double_recovery_status
-        "否": technical_support
-
-
-    # ==================================================
-    # 兩組故障－恢復狀態
-    # ==================================================
-
-    double_recovery_status:
-      type: decision
-      question: "目前 VCB 閉合狀況？"
-      options:
-        "兩組皆閉合": resolved
-        "僅一組閉合": double_siv_transfer
-
-    double_siv_transfer:
-      type: action
-      action: "將正常組 SIV 電源手動轉供至故障組"
-      location: "EMB 車客室配電盤"
-      device: "SIV 轉供操作裝置"
-      next: continue_running
+    pantograph_not_up_troubleshooting:
+      type: end
+      result: "建議進行集電弓不升弓故障排除"
 
 
     # ==================================================
