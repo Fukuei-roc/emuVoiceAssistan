@@ -82,6 +82,8 @@ class ChatResponse(BaseModel):
 class ConversationSession(BaseModel):
     session_id: str
     vehicle: str | None = None
+    car_number: str | None = None
+    train_number: str | None = None
     fault_id: str | None = None
     current_node: str | None = None
     waiting_for_answer: bool = False
@@ -117,4 +119,3 @@ class HealthResponse(BaseModel):
 
 class RealtimeSessionResponse(BaseModel):
     session: dict[str, Any]
-

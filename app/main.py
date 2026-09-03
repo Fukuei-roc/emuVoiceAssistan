@@ -93,8 +93,17 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 
 @app.get("/api/realtime/context")
-def realtime_context():
-    return realtime_service.context_payload()
+def realtime_context(vehicle: str | None = None, fault_id: str | None = None):
+    return realtime_service.context_payload(vehicle=vehicle, fault_id=fault_id)
+
+
+@app.post("/api/realtime/route")
+def realtime_route(payload: dict):
+    message = str(payload.get("message", "")).strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message 不可為空")
+    current = payload.get("routing") if isinstance(payload.get("routing"), dict) else None
+    return realtime_service.route_message(message, current=current)
 @app.post("/api/realtime/session", response_model=RealtimeSessionResponse)
 async def realtime_session() -> RealtimeSessionResponse:
     try:
@@ -178,5 +187,3 @@ def frontend_config():
         "realtime_model": settings.openai_realtime_model,
         "openai_configured": bool(settings.openai_api_key),
     }
-
-

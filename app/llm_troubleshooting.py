@@ -11,6 +11,7 @@ from openai import OpenAI
 
 from app.config import settings
 from app.models import ChatRequest, ChatResponse, ConversationSession, KnowledgeSearchResult
+from app.semantic import extract_routing
 from app.troubleshooting import FaultRegistry, strip_markdown_fence
 
 logger = logging.getLogger(__name__)
@@ -68,26 +69,26 @@ class LLMTroubleshootingService:
         self.client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
         self.sessions: dict[str, ConversationSession] = {}
 
-    def build_context(self) -> KnowledgeContext:
+    def build_context(self, vehicle: str | None = None, fault_id: str | None = None) -> KnowledgeContext:
         catalog_lines: list[str] = []
         blocks: list[str] = []
         sources: list[KnowledgeSearchResult] = []
         total_chars = 0
-        for vehicle, faults in self.registry.registry.items():
+        for registered_vehicle, faults in self.registry.registry.items():
             if not faults:
                 continue
-            catalog_lines.append(f"- {vehicle}")
-            for fault_id, procedure in faults.items():
-                fault_name = self.registry.fault_names.get(vehicle, {}).get(fault_id, procedure.symptom)
-                catalog_lines.append(f"  - {fault_name} ({fault_id})")
+            catalog_lines.append(f"- {registered_vehicle}")
+            for registered_fault_id, procedure in faults.items():
+                fault_name = self.registry.fault_names.get(registered_vehicle, {}).get(registered_fault_id, procedure.symptom)
+                catalog_lines.append(f"  - {fault_name} ({registered_fault_id})")
+                sources.append(KnowledgeSearchResult(vehicle=registered_vehicle, fault_id=registered_fault_id, title=fault_name, source=procedure.source_file, heading=procedure.title, content=procedure.symptom))
                 yaml_text = read_yaml_text(Path(procedure.source_file))
                 total_chars += len(yaml_text)
                 blocks.append(
-                    f"--- YAML START: vehicle={vehicle}, fault={fault_name}, fault_id={fault_id}, file={procedure.source_file} ---\n"
+                    f"--- YAML START: vehicle={registered_vehicle}, fault={fault_name}, fault_id={registered_fault_id}, file={procedure.source_file} ---\n"
                     f"{yaml_text}\n"
-                    f"--- YAML END: vehicle={vehicle}, fault_id={fault_id} ---"
+                    f"--- YAML END: vehicle={registered_vehicle}, fault_id={registered_fault_id} ---"
                 )
-                sources.append(KnowledgeSearchResult(vehicle=vehicle, fault_id=fault_id, title=fault_name, source=procedure.source_file, heading=procedure.title, content=procedure.symptom))
         return KnowledgeContext(
             catalog="\n".join(catalog_lines) if catalog_lines else "目前沒有載入任何車型故障流程。",
             knowledge_blocks="\n\n".join(blocks) if blocks else "目前沒有可用 YAML。",
@@ -95,9 +96,19 @@ class LLMTroubleshootingService:
             chars=total_chars,
         )
 
-    def build_instructions(self) -> str:
-        context = self.build_context()
-        return LLM_TROUBLESHOOTING_PROMPT.format(catalog=context.catalog, knowledge_blocks=context.knowledge_blocks)
+    def build_instructions(self, vehicle: str | None = None, fault_id: str | None = None, train_number: str | None = None, car_number: str | None = None) -> str:
+        context = self.build_context(vehicle=vehicle, fault_id=fault_id)
+        if not vehicle:
+            routing_note = "目前尚未確認車型；必須先詢問車型，不能選擇或執行任何特定車型故障流程。"
+        elif not fault_id:
+            routing_note = f"目前已確認車型：{vehicle}；請先確認故障，再開始對應流程。"
+        else:
+            routing_note = f"目前已確認車型：{vehicle}、故障：{fault_id}；只使用上方 {vehicle} 對應的 YAML。"
+        routing_note += " Context 可能同時包含多個車型；不得跨車型混用節點、設備、車號對應或操作流程。"
+        state = f"\nStructured conversation facts: train_number={train_number or 'unknown'}, car_number={car_number or 'unknown'}, vehicle={vehicle or 'unknown'}, fault_id={fault_id or 'unknown'}."
+        if train_number and not vehicle:
+            state += f" 復誦車次時必須忠實使用 {train_number}，不可改寫數字；先簡短確認車次，再只追問車型。車次不可推導車型。"
+        return LLM_TROUBLESHOOTING_PROMPT.format(catalog=context.catalog, knowledge_blocks=context.knowledge_blocks) + "\n\nRouting state:\n" + routing_note + state
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         if not self.client:
@@ -105,9 +116,18 @@ class LLMTroubleshootingService:
         start = time.perf_counter()
         session = self._get_session(request.session_id)
         session.raw_user_text = request.message
+        routing = extract_routing(request.message, self.registry.available_vehicles(), self.registry.available_faults())
+        if routing.vehicle:
+            session.vehicle = routing.vehicle
+        if routing.car_number:
+            session.car_number = routing.car_number
+        if routing.train_number:
+            session.train_number = routing.train_number
+        if routing.fault_id:
+            session.fault_id = routing.fault_id
         session.messages.append({"role": "user", "content": request.message})
-        context = self.build_context()
-        messages: list[dict[str, str]] = [{"role": "system", "content": LLM_TROUBLESHOOTING_PROMPT.format(catalog=context.catalog, knowledge_blocks=context.knowledge_blocks)}]
+        context = self.build_context(vehicle=session.vehicle, fault_id=session.fault_id)
+        messages: list[dict[str, str]] = [{"role": "system", "content": self.build_instructions(vehicle=session.vehicle, fault_id=session.fault_id, train_number=session.train_number, car_number=session.car_number)}]
         messages.extend(session.messages[-24:])
         response = self.client.chat.completions.create(
             model=settings.openai_text_model,
@@ -127,8 +147,8 @@ class LLMTroubleshootingService:
             reply=reply,
             sources=context.sources,
             latency_ms=latency_ms,
-            vehicle=primary.vehicle if primary else None,
-            fault_id=primary.fault_id if primary else None,
+            vehicle=session.vehicle,
+            fault_id=session.fault_id,
             current_node=None,
             waiting_for_answer=False,
             expected_input=None,

@@ -51,6 +51,7 @@ let textRequestPending = false;
 let connectionGeneration = 0;
 let disconnectTimer = null;
 let activeNoticeKind = null;
+let realtimeRouting = {};
 
 const HEALTHY_VOICE_STATES = new Set(["connected", "listening", "thinking", "speaking"]);
 const FATAL_REALTIME_ERROR_CODES = new Set([
@@ -219,6 +220,7 @@ async function startRealtime() {
   hideNotice();
   setVoiceState("connecting", "preparing microphone");
   try {
+    realtimeRouting = {};
     ensureMicrophoneAvailable();
     if (!sessionId) sessionId = `realtime-${crypto.randomUUID()}`;
     unlockAudioElement();
@@ -259,7 +261,6 @@ async function startRealtime() {
       if (!isCurrentConnection(generation, currentPeer, currentChannel)) return;
       setVoiceState("connecting", "realtime connected; applying YAML context");
       sendRealtimeEvent({ type: "session.update", session: context.session });
-      requestInitialRealtimeResponse();
     });
     currentChannel.addEventListener("message", (event) => handleRealtimeEvent(event, generation, currentPeer, currentChannel));
     currentChannel.addEventListener("error", () => {
@@ -323,12 +324,6 @@ function updateRealtimeContextDebug(context) {
   debugInterpretationSource.textContent = "realtime-llm";
   const source = context.sources?.[0] || {};
   debugSources.textContent = [source.vehicle, source.fault_id, source.source].filter(Boolean).join(" / ") || "-";
-}
-
-function requestInitialRealtimeResponse() {
-  debugRealtimeAudio.textContent = "response audio requested";
-  setVoiceState("thinking", "initial response requested");
-  sendRealtimeEvent({ type: "response.create", response: { output_modalities: ["audio"], instructions: "請用一句話開始教學對話：請司機員說明目前遇到的故障。只問這一題，說完就停。" } });
 }
 
 function ensureMicrophoneAvailable() {
@@ -414,6 +409,7 @@ async function handleRealtimeEvent(event, generation = connectionGeneration, pee
     debugRawUserText.textContent = userTranscript;
     addMessage("user", userTranscript);
     setVoiceState("thinking", "user transcript completed");
+    updateRealtimeRouting(userTranscript, generation, peer, channel);
     return;
   }
   const aiDelta = extractAiTranscriptDelta(payload);
@@ -435,6 +431,22 @@ async function handleRealtimeEvent(event, generation = connectionGeneration, pee
     return;
   }
   if (payload.type === "response.done") setVoiceState("listening", "response completed; awaiting user");
+}
+
+async function updateRealtimeRouting(message, generation, peer, channel) {
+  try {
+    const response = await fetch("/api/realtime/route", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, routing: realtimeRouting }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || `routing failed: ${response.status}`);
+    if (!isCurrentConnection(generation, peer, channel)) return;
+    realtimeRouting = payload.routing || {};
+    if (payload.session) sendRealtimeEvent({ type: "session.update", session: payload.session });
+    updateRealtimeContextDebug({ ...payload.session, mode: "realtime-routing", knowledge_chars: payload.routing?.vehicle && payload.routing?.fault_id ? "selected" : 0, sources: [] });
+    debugRealtime.textContent = `routing: ${JSON.stringify(payload.routing)}`;
+  } catch (error) {
+    console.warn("Realtime routing update failed", error);
+    debugRealtime.textContent = `routing update failed: ${error.message}`;
+  }
 }
 
 function extractUserTranscript(payload) {

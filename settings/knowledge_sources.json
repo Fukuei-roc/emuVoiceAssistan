@@ -1,6 +1,16 @@
 {
   "vehicles": [
     {
+      "vehicle": "EMU700",
+      "faults": [
+        {
+          "id": "vcb_not_close",
+          "name": "VCB不閉合",
+          "file": "knowledge/EMU700/faults/vcb_not_close.yaml"
+        }
+      ]
+    },
+    {
       "vehicle": "EMU800",
       "faults": [
         {

@@ -42,8 +42,8 @@ def test_search_api_returns_fault_procedure():
         response = client.get("/api/search", params={"q": "VCB"})
     assert response.status_code == 200
     data = response.json()
-    assert data["results"][0]["vehicle"] == "EMU800"
-    assert data["results"][0]["fault_id"] == "vcb_not_close"
+    assert {item["vehicle"] for item in data["results"]} == {"EMU700", "EMU800"}
+    assert all(item["fault_id"] == "vcb_not_close" for item in data["results"])
 
 
 def test_knowledge_status_contains_fault_registry():
@@ -64,7 +64,27 @@ def test_realtime_context_contains_yaml_prompt():
     assert data["session"]["audio"]["input"]["turn_detection"]["create_response"] is True
     assert data["session"]["audio"]["input"]["turn_detection"]["threshold"] == 0.7
     assert "一次只問一個問題" in data["instructions"]
-    assert "double_voltage_decision" in data["instructions"]
+    assert data["knowledge_loaded"] is True
+    assert "emu700_vcb_not_close" in data["instructions"]
+    assert "emu800_vcb_not_close" in data["instructions"]
+    with TestClient(app) as client:
+        selected = client.get("/api/realtime/context", params={"vehicle": "EMU800", "fault_id": "vcb_not_close"}).json()
+    assert selected["knowledge_loaded"] is True
+    assert "emu700_vcb_not_close" in selected["instructions"]
+    assert "emu800_vcb_not_close" in selected["instructions"]
+
+
+def test_realtime_route_identifies_vehicle_and_rejects_train_number():
+    with TestClient(app) as client:
+        train = client.post("/api/realtime/route", json={"message": "我是4232次，我VCB不閉合"}).json()
+        car = client.post("/api/realtime/route", json={"message": "我車號813，我VCB不閉合"}).json()
+    assert train["routing"]["train_number"] == "4232"
+    assert train["routing"]["vehicle"] is None
+    assert train["routing"]["fault_id"] == "vcb_not_close"
+    assert "4232" in train["session"]["instructions"]
+    assert "不可改寫數字" in train["session"]["instructions"]
+    assert car["routing"]["vehicle"] == "EMU800"
+    assert car["routing"]["fault_id"] == "vcb_not_close"
 
 
 def test_application_models_and_vad_are_loaded_from_toml():
@@ -108,7 +128,7 @@ def test_text_chat_uses_llm_history_and_yaml_prompt(monkeypatch):
     monkeypatch.setattr(chat_service, "client", fake)
     with TestClient(app) as client:
         first = client.post("/api/chat", json={"message": "我發生VCP不閉合"}).json()
-        second = client.post("/api/chat", json={"session_id": first["session_id"], "message": "八百新"}).json()
+        second = client.post("/api/chat", json={"session_id": first["session_id"], "message": "八百新，VCB不閉合"}).json()
     assert first["reply"] == "請問目前是哪一型車？"
     assert second["session_id"] == first["session_id"]
     assert second["last_turn_status"] == "llm"
@@ -116,7 +136,7 @@ def test_text_chat_uses_llm_history_and_yaml_prompt(monkeypatch):
     second_messages = fake.chat.completions.calls[1]["messages"]
     assert any("double_voltage_decision" in message["content"] for message in second_messages if message["role"] == "system")
     assert any(message["content"] == "我發生VCP不閉合" for message in second_messages)
-    assert any(message["content"] == "八百新" for message in second_messages)
+    assert any(message["content"] == "八百新，VCB不閉合" for message in second_messages)
 
 
 def test_frontend_debug_fields_exist():
@@ -131,8 +151,8 @@ def test_frontend_debug_fields_exist():
     assert "composerDrawer" in html
     assert "historyPanel" in html
     assert "viewport-fit=cover" in html
-    assert "20260827-voice-noquick1" in html
-    assert 'output_modalities: ["audio"]' in javascript
+    assert "20260903-routing1" in html
+    assert 'initial response requested' not in javascript
     assert 'modalities: ["audio", "text"]' not in javascript
     assert "Recoverable Realtime event error" in javascript
     assert "connectionGeneration" in javascript

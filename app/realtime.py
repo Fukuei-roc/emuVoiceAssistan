@@ -20,11 +20,11 @@ class RealtimeService:
         self.registry = registry
         self.llm = LLMTroubleshootingService(registry)
 
-    def session_config(self) -> dict:
+    def session_config(self, vehicle: str | None = None, fault_id: str | None = None) -> dict:
         return {
             "type": "realtime",
             "model": settings.openai_realtime_model,
-            "instructions": self.llm.build_instructions(),
+            "instructions": self.llm.build_instructions(vehicle=vehicle, fault_id=fault_id),
             "tools": [],
             "tool_choice": "none",
             "audio": {
@@ -77,11 +77,43 @@ class RealtimeService:
         logger.info("Realtime call created sdp_length=%s llm_driven=true", len(sdp))
         return {"sdp": response.text, "location": response.headers.get("Location")}
 
-    def context_payload(self) -> dict:
-        context = self.llm.debug_context()
-        context["instructions"] = self.llm.build_instructions()
-        context["session"] = self.session_config()
+    def context_payload(self, vehicle: str | None = None, fault_id: str | None = None) -> dict:
+        context_obj = self.llm.build_context(vehicle=vehicle, fault_id=fault_id)
+        context = {
+            "mode": "llm_driven",
+            "knowledge_loaded": bool(context_obj.chars),
+            "knowledge_chars": context_obj.chars,
+            "sources": [source.model_dump() for source in context_obj.sources],
+        }
+        context["instructions"] = self.llm.build_instructions(vehicle=vehicle, fault_id=fault_id)
+        context["session"] = self.session_config(vehicle=vehicle, fault_id=fault_id)
         return context
+
+    def route_message(self, message: str, current: dict | None = None) -> dict:
+        from app.semantic import extract_routing
+
+        info = extract_routing(message, self.registry.available_vehicles(), self.registry.available_faults())
+        prior = current or {}
+        routing = {
+            "vehicle": info.vehicle or prior.get("vehicle"),
+            "car_number": info.car_number or prior.get("car_number"),
+            "train_number": info.train_number or prior.get("train_number"),
+            "fault_id": info.fault_id or prior.get("fault_id"),
+        }
+        return {
+            "routing": routing,
+            "session": self.session_config_with_state(routing),
+        }
+
+    def session_config_with_state(self, routing: dict[str, str | None]) -> dict:
+        config = self.session_config(vehicle=routing.get("vehicle"), fault_id=routing.get("fault_id"))
+        config["instructions"] = self.llm.build_instructions(
+            vehicle=routing.get("vehicle"),
+            fault_id=routing.get("fault_id"),
+            train_number=routing.get("train_number"),
+            car_number=routing.get("car_number"),
+        )
+        return config
 
     def _safe_error_text(self, text: str) -> str:
         return re.sub(r"sk-[A-Za-z0-9_-]+", "sk-***", text or "").strip()

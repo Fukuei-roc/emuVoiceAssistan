@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from openai import OpenAI
@@ -14,6 +15,24 @@ from app.models import ExpectedInput, ParsedAnswer
 logger = logging.getLogger(__name__)
 
 AMBIGUOUS_WORDS = ["好像", "應該", "可能", "大概", "也許", "不確定", "不知道", "沒注意", "看不清", "不清楚", "差不多", "正常吧"]
+
+
+@dataclass(frozen=True)
+class RoutingInfo:
+    """Deterministic routing facts extracted from one user utterance."""
+
+    vehicle: str | None = None
+    car_number: str | None = None
+    train_number: str | None = None
+    fault_id: str | None = None
+
+    def as_dict(self) -> dict[str, str | None]:
+        return {
+            "vehicle": self.vehicle,
+            "car_number": self.car_number,
+            "train_number": self.train_number,
+            "fault_id": self.fault_id,
+        }
 
 
 class SemanticJSON(BaseModel):
@@ -143,8 +162,41 @@ def normalize_text(text: str) -> str:
 
 
 def fast_vehicle(text: str, available_vehicles: list[str]) -> str | None:
-    compact = normalize_text(text).upper()
-    match = re.search(r"EMU?(700|800|900)", compact)
+    return extract_routing(text, available_vehicles, []).vehicle
+
+
+def extract_routing(text: str, available_vehicles: list[str], available_faults: list[dict[str, str]]) -> RoutingInfo:
+    """Extract explicit vehicle, semantic car/train numbers and fault aliases.
+
+    Number inference is deliberately conservative: a three-digit number is a
+    car number only when the utterance supplies car context (or the speaker
+    says ``我是...``), while ``次`` always means train number.
+    """
+    raw = text or ""
+    compact = normalize_text(raw).upper()
+    train_match = re.search(r"(?<!\d)(\d{3,4})\s*次", raw)
+    train_number = train_match.group(1) if train_match else None
+
+    vehicle = _explicit_vehicle(raw, compact, available_vehicles)
+    car_number = None
+    if not vehicle and not train_number:
+        car_match = re.search(r"(?:車號|车号)\s*(?:是|為|为)?\s*(\d{3})(?!\d)", raw)
+        if not car_match:
+            car_match = re.search(r"(?<!\d)([78]\d{2})\s*(?:車|车)(?!次)", raw)
+        if not car_match:
+            car_match = re.search(r"(?:我(?:的)?車|我(?:的)?车|我是)\s*(?:號|号)?\s*(?:是)?\s*([78]\d{2})(?!\d)", raw)
+        if not car_match:
+            car_match = re.search(r"(?:講錯|说错|更正|改成).{0,8}?([78]\d{2})(?!\d)", raw)
+        if car_match:
+            car_number = car_match.group(1)
+            vehicle = f"EMU{car_number[0]}00"
+            if vehicle not in available_vehicles:
+                vehicle = None
+    return RoutingInfo(vehicle=vehicle, car_number=car_number, train_number=train_number, fault_id=fast_fault(raw, available_faults))
+
+
+def _explicit_vehicle(raw: str, compact: str, available_vehicles: list[str]) -> str | None:
+    match = re.search(r"EMU\s*(700|800|900)(?!\d)", compact)
     if match:
         vehicle = f"EMU{match.group(1)}"
         return vehicle if vehicle in available_vehicles else None
@@ -153,9 +205,9 @@ def fast_vehicle(text: str, available_vehicles: list[str]) -> str | None:
         vehicle = f"EMU{match.group(1)}"
         return vehicle if vehicle in available_vehicles else None
     chinese = {"七百": "EMU700", "八百": "EMU800", "九百": "EMU900"}
-    compact_original = normalize_text(text)
+    compact_original = normalize_text(raw)
     for token, vehicle in chinese.items():
-        if compact_original in {token, f"{token}型", f"{token}形", f"{token}新", f"{token}線", f"emu{token}"} and vehicle in available_vehicles:
+        if (compact_original in {token, f"{token}型", f"{token}形", f"{token}新", f"{token}線", f"emu{token}"} or token in compact_original) and vehicle in available_vehicles:
             return vehicle
     return None
 
@@ -280,9 +332,6 @@ def match_option(options: list[str], text: str) -> str | None:
         as_int = str(int(number)) if number.is_integer() else str(number)
         return next((option for option in options if option == as_int), None)
     return None
-
-
-
 
 
 
